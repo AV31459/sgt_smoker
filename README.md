@@ -40,7 +40,7 @@ source env/bin/activate
 ```
 pip install -r requirements.txt
 ```
-*Переименуйте и отредактируйте файл с токеном бота и telegram_id его администратора*
+Переименуйте `.env.examle` и ***укажите токен вашего бота и telegram_id администратора***
 ```
 mv .env.examle .env
 vi .env (или любым другим текстовым редактором по вкусу)
