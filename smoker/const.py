@@ -105,7 +105,7 @@ NEW_CIG_AVALABLE_MSG = (
 
 STOP_SMOKED_CIGS_MSG = 'Всего выкурено *{}* сигарет'
 
-SMOKE_AFFIRMATIVE_MSG = '🚬 выкурена\nПомедленнее, я все записываю 🛃'
+SMOKE_AFFIRMATIVE_MSG = '🚬 выкурена 🆗\n'
 
 SMOKE_NEGATIVE_PREFIX = 'Отставить\\! 🤬\n'
 
