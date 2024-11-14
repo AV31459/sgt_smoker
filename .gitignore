@@ -138,4 +138,10 @@ pics/
 # temporary staff
 temp/
 tmp/
+tmp*
 old/
+
+data/*
+!data/.gitkeep
+logs/*
+!logs/.gitkeep
