@@ -67,7 +67,7 @@ def bot_runner():
                 f'{exc.__class__.__name__}: {exc}', exc_info=True
             )
         finally:
-            handler.persist_data()
+            handler.shutdown()
 
 
 if __name__ == '__main__':

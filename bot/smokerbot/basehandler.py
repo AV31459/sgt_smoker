@@ -2,11 +2,13 @@ import asyncio
 import functools
 from abc import ABC, abstractmethod
 from logging import Logger
+from contextvars import copy_context
 
 from telethon import TelegramClient, errors
 from telethon.events.common import EventCommon
 
 from .core import Context
+from . import context
 
 
 class BaseHandler(ABC):
@@ -31,7 +33,69 @@ class BaseHandler(ABC):
             raise exc
 
     @staticmethod
-    def build_context(method):
+    def build_context(
+        scope: str,
+        event_handling: bool = False,
+        propagate_exc: bool = False
+    ):
+        """Декоратор для создания отдельного контекста выполнения метода.
+
+        Параметры:
+            - `scope`- обязательное имя (область) создаваемого контекста
+            - `event_handling` - декорируемый метод является обработчиком
+            событий telethon, т.е. получает единственный аргумент типа
+            `telethon.events.common.EventCommon`
+            - `propagate_exc` - перевызовать необрабатываемые исключения после
+            логгирования.
+
+        NB: при использовании нескольких декораторов, должен быть самым
+        последним (верхний уровень).
+        """
+
+        def decorator(method):
+
+            @functools.wraps(method)
+            def wrapper(self: BaseHandler, *args, **kwargs):
+
+                if (
+                    event_handling
+                    and not (
+                        len(args) == 1 and isinstance(args[0], EventCommon)
+                    )
+                ):
+                    self._log_exception(
+                        ValueError(
+                            f'a {method.__name__}() method was decorated as '
+                            '\'event_handling\', so it must be callled with '
+                            'telethone \'event\' as a single positional '
+                            'argument.'
+                        ),
+                        log_prefix='context build error:',
+                        propagate=True
+                    )
+
+                ctx = copy_context()
+                ctx.run(
+                    context.build_context,
+                    scope_val=scope,
+                    event_val=(args[0] if event_handling else None),
+                    propagate_exc_val=propagate_exc
+                )
+
+                prefix = (
+                    f'exp_build_context wrapper, scope={scope}, '
+                    f'method={method.__name__}, after setting scope:'
+                )
+                context.print_vars(prefix)
+
+                return ctx.run(method, self, *args, **kwargs)
+
+            return wrapper
+
+        return decorator
+
+    @staticmethod
+    def _build_context(method):
         """Декоратор для создания объекта `Context` и передачи его методу.
 
         Предназначен для методов, зарегистрированных в качестве обрабочиков
@@ -65,28 +129,39 @@ class BaseHandler(ABC):
 
         Может быть использован как синхронными, так и ассинхронными методами.
 
-        :experimantal: При получении FloodError засыпает на указанное число
+        *experimental* При получении FloodError засыпает на указанное число
         секунд и рекурсивно перевызывает исходный (декорированный) метод.
 
-        Для декорированного метода обрабатываются _опциональный_ именованный
-        параметр 'context' (при наличии в kwargs), для получения следующих
-        аргументов:
+        Декорируемый метод должен получать ***обязательный именованный***
+        ***параметр 'context'***, содержащий следующие аттрибуты:
 
-            - `log_prefix`: str - префикс сообщения об ошибке, по умолчанию ''
-            - `propagate_exc`: bool - перевызвать исключение после
-            логгирования, по умолчанию False.
+            - `log_prefix`: str - префикс сообщения об ошибке
+            - `propagate_exc`: bool - перевызывать ли исключение после
+            логгирования
         """
 
         @functools.wraps(method)
         def wrapper(self: BaseHandler, *args, **kwargs):
 
-            context = kwargs.get('context') or Context()
-            log_prefix = context.log_prefix
-            propagate_exc = context.propagate_exc
-            log_prefix += (
-                 f' {method.__name__}() call with args={args}, '
-                 f'kwargs={kwargs}:'
+            call_info_string = (
+                f' {method.__name__}() call with args={args}, '
+                f'kwargs={kwargs}:'
             )
+
+            # Проверка наличия контекста
+            if not (
+                (context := kwargs.get('context'))
+                and isinstance(context, Context)
+            ):
+                self._log_exception(
+                    ValueError('method must be called with valid \'context\' '
+                               'argument in kwargs.'),
+                    log_prefix=call_info_string,
+                    propagate=True
+                )
+
+            log_prefix = context.log_prefix + call_info_string
+            propagate_exc = context.propagate_exc
 
             if not asyncio.iscoroutinefunction(method):
                 try:
