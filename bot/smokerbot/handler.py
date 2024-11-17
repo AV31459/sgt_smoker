@@ -3,12 +3,11 @@ from logging import Logger
 
 from telethon import TelegramClient, events, functions, types
 
-from . import context as exp_context
-from . import const
+from . import const, context
 from .basehandler import BaseHandler
 from .clientmixin import ClientMixin
-from .core import Context, get_chat_at_id_string, get_message_info_string
 from .exceptions import InitError
+from .helpers import get_message_info_string
 
 
 class SmokerBotHandler(ClientMixin, BaseHandler):
@@ -21,23 +20,17 @@ class SmokerBotHandler(ClientMixin, BaseHandler):
             logger: Logger,
             persistence_interval: int = None
     ):
-        exp_context.print_vars('init')
+        context.print_vars('init')
 
         # Инициализация базовых аттрибутов
         super().__init__(client, logger)
         self._persistence_interval = persistence_interval
-        self.loop = client.loop  # just convinience
 
         # Инициаизация команд бота, загрузка данных, создание задач и т.п.
-        self._post_init(
-            context=Context(
-                _log_prefix='handler initialisation:',
-                propagate_exc=True
-            )
-        )
+        self._post_init()
 
     @BaseHandler.handle_exceptions
-    def _post_init(self, context: Context = None):
+    def _post_init(self):
         """Инициаизация команд бота, загрузка данных, запуск задач и т.п."""
 
         # Проверка, что клиент уже залогинен
@@ -45,25 +38,23 @@ class SmokerBotHandler(ClientMixin, BaseHandler):
             raise InitError('telethon client is not yet connected')
 
         # Установка команд и кнопки меню бота
-        self.loop.run_until_complete(
-            self._set_bot_commands_and_menu(context=context)
+        self._loop.run_until_complete(
+            self._set_bot_commands_and_menu()
         )
 
         # Создание задачи автосохранения данных
-        self._presistence_task = self.loop.create_task(
+        self._presistence_task = self._loop.create_task(
             self._persitstence_routine()
         )
 
+    @BaseHandler.build_context('shutdown')
     def shutdown(self):
         """Завершение работы хендлера."""
-        self.persist_data(context=Context(_log_prefix='shutting down:'))
+        self.persist_data()
 
     @BaseHandler.handle_exceptions
-    async def _set_bot_commands_and_menu(self, context: Context = None):
+    async def _set_bot_commands_and_menu(self):
         """Установка (списка) команд бота и кнопки меню."""
-
-        context = Context()
-        context.log_prefix = 'set default commands and menu:'
 
         await self._client_call(
             functions.bots.SetBotCommandsRequest(
@@ -71,12 +62,11 @@ class SmokerBotHandler(ClientMixin, BaseHandler):
                 lang_code=const.BOT_COMMANDS_LANG_CODE,
                 commands=const.BOT_COMMANDS_DEFAULT
             ),
-            context=context
         )
         # raise InitFailure('Error setting default commands and menu')
 
     @BaseHandler.handle_exceptions
-    def persist_data(self, context: Context = None):
+    def persist_data(self):
         """Сохранить данные бота."""
 
         # with open('data/users_channels.yaml', 'w') as f:
@@ -93,16 +83,12 @@ class SmokerBotHandler(ClientMixin, BaseHandler):
             return
 
         await asyncio.sleep(self._persistence_interval)
-        self.persist_data(
-            context=Context(
-                _log_prefix='persistence routine:',
-                propagate_exc=False
-            )
-        )
+        self.persist_data()
 
         # Пересоздаем задачу
         self.loop.create_task(self._persitstence_routine())
 
+    @BaseHandler.build_context('filter message', event_handling=True)
     def filter_message_event(self, event) -> bool:
         """Фильтрация входящих событий (обновлений) для сообщений.
 
@@ -114,30 +100,31 @@ class SmokerBotHandler(ClientMixin, BaseHandler):
 
         if event.message.action or not event.message.is_private:
             return self.logger.info(
-                f'message {get_chat_at_id_string(event.message)} is either '
+                f'{context.build_log_prefix()} message is either '
                 'service one or not private, ignore.'
             )
 
         return True
 
-    @BaseHandler._build_context
-    @BaseHandler.handle_exceptions
+    @BaseHandler.build_context('new message', event_handling=True)
+    # @BaseHandler.handle_exceptions
     async def on_new_message(
         self,
         event: events.NewMessage.Event,
-        context: Context = None
     ):
         """Обработчик новых входящих сообщений."""
+        context.print_vars('inside on_new_message')
 
-        context.log_prefix = f'new message {context.log_prefix}'
-        self.logger.info(f'{context.log_prefix} message info: '
-                         f'{get_message_info_string(event.message)}')
+        self.logger.info(
+            f'{context.build_log_prefix()} message info: '
+            f'{get_message_info_string(event.message)}'
+        )
 
         # while True:
         #     await asyncio.sleep(2)
         await event.respond(event.message.message)
 
-    @BaseHandler._build_context
+    @BaseHandler.build_context('edited message', event_handling=True)
     @BaseHandler.handle_exceptions
     async def on_message_edited(self, event):
         """Обработчик событий редактирования сообщений."""
@@ -147,10 +134,10 @@ class SmokerBotHandler(ClientMixin, BaseHandler):
         # await self.on_new_message('str')
         pass
 
-    def _is_blocked_by_peer(self, context: Context = None, **kwargs):
+    def _is_blocked_by_peer(self):
         """Handler for UserIsBlockedError."""
 
         self.logger.info(
-            f'{context.log_prefix} Blocked by user_id={context.chat_id}. '
-            'Actions TBD.'
+            f'{context.build_log_prefix()} Blocked by user_id='
+            f'{context.chat_id.get()}. Actions TBD.'
         )
