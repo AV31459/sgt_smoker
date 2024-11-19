@@ -1,18 +1,18 @@
 from contextvars import ContextVar, copy_context
-from typing import Callable
 
-from telethon import types, events
+from telethon import events, types
 from telethon.custom import Message
 from telethon.events.common import EventCommon
-
 
 # NB: contextvars should be created at the top module level
 # and never in closures:
 # https://docs.python.org/3/library/contextvars.html#context-variables
 
 # Handler method call scope
-scope: ContextVar[str | None] = ContextVar('scope', default=None)
-sub_scope: ContextVar[str | None] = ContextVar('sub_scope', default=None)
+scope: ContextVar[str] = ContextVar('scope', default='')
+method_name: ContextVar[str] = ContextVar('method_name', default='')
+method_args: ContextVar[list] = ContextVar('method_args', default=[])
+method_kwargs: ContextVar[dict] = ContextVar('method_kwargs', default={})
 propagate_exc: ContextVar[bool | None] = (
     ContextVar('propagate_exc', default=None)
 )
@@ -55,68 +55,76 @@ query_data: ContextVar[bytes | None] = ContextVar('query_data', default=None)
 def print_vars(prefix=''):
     """Debug only"""
     ctx = copy_context()
-    print(f'[{prefix}] vars set in context:', 
+    print(f'[{prefix}] vars set in context:',
           {k.name: v for k, v in ctx.items()})
 
 
-def build_context(
+def clear_and_set_contextvars(
         scope_val: str,
         event_val: EventCommon | None = None,
         propagate_exc_val: bool | None = None
 ):
-    """Set context variable values besed on given arguments."""
+    """Clear all contextvars and set new ones based on given args."""
 
-    # Сбрасываем значения контекстных переменннх (just in case)
+    # Сбрасываем все значения контекстных переменннх
     for var_name in (
         var.name for var in copy_context().keys() if var.name in globals()
     ):
         globals()[var_name].set(None)
 
-    # Устанавливаем значения переменных, передаваемых явным образом
-    scope.set(scope_val)
+    # Устанавливаем контекст обработки события telethon, при наличии
+    if isinstance(event_val, EventCommon):
+
+        # Обработка общих аттрибутов событий telethon event
+        # https://docs.telethon.dev/en/stable/quick-references/events-reference.html#events-reference
+        for var_name in ('chat_id', 'chat', 'sender_id', 'sender'):
+            globals()[var_name].set(getattr(event_val, var_name, None))
+
+        # Для событий типа NewMessage, MessageEdited
+        if (
+            hasattr(event_val, 'message')
+            and isinstance(event_val.message, Message)
+        ):
+            msg.set(event_val.message)
+            msg_id.set(event_val.message.id)
+
+        # Для событий типа CallbackQuery
+        if isinstance(event_val, events.CallbackQuery):
+            query_id.set(event_val.id)
+            msg_id.set(event_val.message_id)
+            query_data.set(event_val.data)
+
+    # Устанавливаем значения scope, method_{...}, event, propagate_exc
+    if chat_id.get():
+        scope.set(f'{scope_val} {build_chat_at_id_string()}:')
+    else:
+        scope.set(f'[{scope_val}] :')
     event.set(event_val)
     propagate_exc.set(propagate_exc_val)
 
-    if not isinstance(event_val, EventCommon):
-        return
 
-    # Обработка общих аттрибутов событий telethon event
-    # https://docs.telethon.dev/en/stable/quick-references/events-reference.html#events-reference
-    for var_name in ('chat_id', 'chat', 'sender_id', 'sender'):
-        globals()[var_name].set(getattr(event_val, var_name, None))
+def build_chat_at_id_string() -> str:
+    """Get context-based `[ chat_id @ msg_id ]` string if any."""
 
-    # Для событий типа NewMessage, MessageEdited
-    if (
-        hasattr(event_val, 'message')
-        and isinstance(event_val.message, Message)
-    ):
-        msg.set(event_val.message)
-        msg_id.set(event_val.message.id)
-
-    # Для событий типа CallbackQuery
-    if isinstance(event_val, events.CallbackQuery):
-        query_id.set(event_val.id)
-        msg_id.set(event_val.message_id)
-        query_data.set(event_val.data)
+    return (f'[ {chat_id.get()} @ {msg_id.get()} ]' if chat_id.get() else '')
 
 
-def build_log_prefix(method: Callable = None, args=[], kwargs={}) -> str:
-    """Builds log prefix string based on current context.
+def build_log_prefix(call_info: bool = True) -> str:
+    """Builds full log prefix string based on current context.
 
     Built prefix looks like:
-    `scope [chat_id @ msg_id] : method() call with args=[...], kwargs={...}:`,
-    where:
-
-    - `scope`, `chat_id`, `msg_id` - values are obtained from current context,
-    - `method`, `args`, `kwargs` - optional arguments.
+    `scope : method() call with args=[...], kwargs={...}:`,
+    where values are obtained from current context.
     """
 
     return (
-        str(scope.get())
-        + (f' [{chat_id.get()} @ {msg_id.get()}] :' if chat_id.get() else ' :')
-        + (f' {sub_scope.get()} :' if sub_scope.get() else '')
-        + (
-            f' {method.__name__}() call with args={args}, kwargs={kwargs} :'
-            if method else ''
-        )
+        f'{scope.get()}'
+        + (f' {method_name.get()}() call with args={method_args.get()}, '
+           f'kwargs={method_kwargs.get()}:' if call_info else '')
     )
+
+
+def build_scope_prefix() -> str:
+    """Shortcut for `build_log_prefix(call_info=False)."""
+
+    return build_log_prefix(call_info=False)

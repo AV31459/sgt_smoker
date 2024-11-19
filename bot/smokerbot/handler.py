@@ -13,15 +13,17 @@ from .helpers import get_message_info_string
 class SmokerBotHandler(ClientMixin, BaseHandler):
     """Основой объект-хендлер бота."""
 
-    @BaseHandler.build_context('init')
+    new_context = BaseHandler.new_context
+    manage_context = BaseHandler.manage_context
+
+    @new_context(scope='init', propagate_exc=True)
+    @manage_context
     def __init__(
             self,
             client: TelegramClient,
             logger: Logger,
             persistence_interval: int = None
     ):
-        context.print_vars('init')
-
         # Инициализация базовых аттрибутов
         super().__init__(client, logger)
         self._persistence_interval = persistence_interval
@@ -29,7 +31,7 @@ class SmokerBotHandler(ClientMixin, BaseHandler):
         # Инициаизация команд бота, загрузка данных, создание задач и т.п.
         self._post_init()
 
-    @BaseHandler.handle_exceptions
+    @manage_context
     def _post_init(self):
         """Инициаизация команд бота, загрузка данных, запуск задач и т.п."""
 
@@ -47,12 +49,13 @@ class SmokerBotHandler(ClientMixin, BaseHandler):
             self._persitstence_routine()
         )
 
-    @BaseHandler.build_context('shutdown')
+    @new_context()
+    @manage_context
     def shutdown(self):
         """Завершение работы хендлера."""
         self.persist_data()
 
-    @BaseHandler.handle_exceptions
+    @manage_context
     async def _set_bot_commands_and_menu(self):
         """Установка (списка) команд бота и кнопки меню."""
 
@@ -63,9 +66,8 @@ class SmokerBotHandler(ClientMixin, BaseHandler):
                 commands=const.BOT_COMMANDS_DEFAULT
             ),
         )
-        # raise InitFailure('Error setting default commands and menu')
 
-    @BaseHandler.handle_exceptions
+    @manage_context
     def persist_data(self):
         """Сохранить данные бота."""
 
@@ -74,8 +76,12 @@ class SmokerBotHandler(ClientMixin, BaseHandler):
         #         {'users': self._users, 'channels': self._channels},
         #       # f, indent=4
         #     )
+
+        # raise ValueError('test')
         self.logger.info('BotHandler user data persisted')
 
+    @new_context(scope='persistence')
+    @manage_context
     async def _persitstence_routine(self):
         """Задача периодического сохранения данных."""
 
@@ -86,9 +92,10 @@ class SmokerBotHandler(ClientMixin, BaseHandler):
         self.persist_data()
 
         # Пересоздаем задачу
-        self.loop.create_task(self._persitstence_routine())
+        self._loop.create_task(self._persitstence_routine())
 
-    @BaseHandler.build_context('filter message', event_handling=True)
+    @new_context(scope='filter message', event_handling=True)
+    @manage_context
     def filter_message_event(self, event) -> bool:
         """Фильтрация входящих событий (обновлений) для сообщений.
 
@@ -106,26 +113,27 @@ class SmokerBotHandler(ClientMixin, BaseHandler):
 
         return True
 
-    @BaseHandler.build_context('new message', event_handling=True)
-    # @BaseHandler.handle_exceptions
+    @new_context(scope='new message', event_handling=True)
+    @manage_context
     async def on_new_message(
         self,
         event: events.NewMessage.Event,
     ):
         """Обработчик новых входящих сообщений."""
-        context.print_vars('inside on_new_message')
 
         self.logger.info(
-            f'{context.build_log_prefix()} message info: '
+            f'{context.scope.get()} message info: '
             f'{get_message_info_string(event.message)}'
         )
 
-        # while True:
-        #     await asyncio.sleep(2)
-        await event.respond(event.message.message)
+        self.func_a()
 
-    @BaseHandler.build_context('edited message', event_handling=True)
-    @BaseHandler.handle_exceptions
+        while True:
+            await asyncio.sleep(2)
+            await event.respond(event.message.message)
+
+    @new_context(scope='edited message', event_handling=True)
+    @manage_context
     async def on_message_edited(self, event):
         """Обработчик событий редактирования сообщений."""
 
@@ -134,8 +142,11 @@ class SmokerBotHandler(ClientMixin, BaseHandler):
         # await self.on_new_message('str')
         pass
 
+    @manage_context
     def _is_blocked_by_peer(self):
         """Handler for UserIsBlockedError."""
+
+        raise ValueError('test')
 
         self.logger.info(
             f'{context.build_log_prefix()} Blocked by user_id='
