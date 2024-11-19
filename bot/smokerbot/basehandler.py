@@ -3,7 +3,6 @@ import functools
 from abc import ABC, abstractmethod
 from contextvars import Context, copy_context
 from logging import Logger
-from contextlib import contextmanager
 
 from telethon import TelegramClient, errors
 from telethon.events.common import EventCommon
@@ -143,26 +142,6 @@ class BaseHandler(ABC):
         Может быть использован как синхронными, так и ассинхронными методами.
         """
 
-        @contextmanager
-        def context_updater(method, args, kwargs):
-            """Update/reset relevant contextvars."""
-
-            scope_token = context.scope.set(
-                f'{context.scope.get()} {calling_method_name}():'
-                if (calling_method_name := context.method_name.get())
-                else f'{context.scope.get()}'
-            )
-            method_name_token = context.method_name.set(method.__name__)
-            method_args_token = context.method_args.set(args)
-            method_kwargs_token = context.method_kwargs.set(kwargs)
-
-            yield
-
-            context.scope.reset(scope_token)
-            context.method_name.reset(method_name_token)
-            context.method_args.reset(method_args_token)
-            context.method_kwargs.reset(method_kwargs_token)
-
         if not asyncio.iscoroutinefunction(method):
 
             # Синхронный декоратор
@@ -172,14 +151,19 @@ class BaseHandler(ABC):
             ):
 
                 try:
-                    with context_updater(method, args, kwargs):
-                        return method(self, *args, **kwargs)
+                    tokens = context.set_method_and_modify_scope(method, args,
+                                                                 kwargs)
+                    return method(self, *args, **kwargs)
+
                 except Exception as exc:
                     self._log_exception(
                         exc,
                         log_prefix=f'{context.build_log_prefix()} 🔸',
                         propagate=context.propagate_exc.get()
                     )
+
+                finally:
+                    context.reset_method_and_modified_scope(*tokens)
 
             return sync_manage_context_wrapper
 
@@ -189,11 +173,10 @@ class BaseHandler(ABC):
             self: BaseHandler, *args, **kwargs
         ):
 
-            log_prefix = context.build_log_prefix()
-
             try:
-                with context_updater(method, args, kwargs):
-                    return await method(self, *args, **kwargs)
+                tokens = context.set_method_and_modify_scope(method, args,
+                                                             kwargs)
+                return await method(self, *args, **kwargs)
 
             # Обработка UserIsBlockedError
             except errors.UserIsBlockedError:
@@ -203,14 +186,14 @@ class BaseHandler(ABC):
             except errors.FloodWaitError as exc:
                 # Логгируем и ждем указанное время
                 self.logger.info(
-                    f'{log_prefix} 🟡 got a FloodWaitError, sleeping for '
-                    f'{exc.seconds} seconds'
+                    f'{context.build_log_prefix()} 🟡 got a FloodWaitError, '
+                    f'sleeping for {exc.seconds} seconds'
                 )
                 await asyncio.sleep(exc.seconds)
 
                 # Рекурсивно перевызываем декорированный метод
                 self.logger.info(
-                    f'{log_prefix} is waking up '
+                    f'{context.build_log_prefix()} is waking up '
                     'after FloodWaitError and re-calling itself.'
                 )
                 return await getattr(self, method.__name__)(*args, **kwargs)
@@ -218,9 +201,12 @@ class BaseHandler(ABC):
             except Exception as exc:
                 self._log_exception(
                     exc,
-                    log_prefix=f'{log_prefix} 🔸',
+                    log_prefix=f'{context.build_log_prefix()} 🔸',
                     propagate=context.propagate_exc.get()
                 )
+
+            finally:
+                context.reset_method_and_modified_scope(*tokens)
 
         return async_manage_context_wrapper
 

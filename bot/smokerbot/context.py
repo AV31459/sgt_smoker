@@ -1,4 +1,5 @@
-from contextvars import ContextVar, copy_context
+from contextvars import ContextVar, copy_context, Token
+from types import FunctionType
 
 from telethon import events, types
 from telethon.custom import Message
@@ -52,11 +53,13 @@ query_id: ContextVar[int | None] = ContextVar('query_id', default=None)
 query_data: ContextVar[bytes | None] = ContextVar('query_data', default=None)
 
 
-def print_vars(prefix=''):
-    """Debug only"""
+def print_vars(prefix='', names=()):
+    """Debug only!"""
     ctx = copy_context()
-    print(f'[{prefix}] vars set in context:',
-          {k.name: v for k, v in ctx.items()})
+    print(
+        f'[{prefix}] vars in context:',
+        {k.name: v for k, v in ctx.items() if not names or k.name in names}
+    )
 
 
 def clear_and_set_contextvars(
@@ -101,6 +104,39 @@ def clear_and_set_contextvars(
         scope.set(f'[{scope_val}] :')
     event.set(event_val)
     propagate_exc.set(propagate_exc_val)
+
+
+def set_method_and_modify_scope(
+    method: FunctionType,
+    args: list,
+    kwargs: dict
+) -> tuple[Token]:
+    """Set new `method_{...}` contextvars, modify `scope` and return tokens."""
+
+    return (
+        scope.set(
+            f'{scope.get()} {current_method_name}():'
+            if (current_method_name := method_name.get())
+            else f'{scope.get()}'
+        ),
+        method_name.set(method.__name__),
+        method_args.set(args),
+        method_kwargs.set(kwargs),
+    )
+
+
+def reset_method_and_modified_scope(
+    scope_token: Token,
+    method_name_token: Token,
+    method_args_token: Token,
+    method_kwargs_token: Token
+):
+    """Resets values set by `set_method_and_modify_scope`."""
+
+    scope.reset(scope_token)
+    method_name.reset(method_name_token)
+    method_args.reset(method_args_token)
+    method_kwargs.reset(method_kwargs_token)
 
 
 def build_chat_at_id_string() -> str:

@@ -53,6 +53,7 @@ class SmokerBotHandler(ClientMixin, BaseHandler):
     @manage_context
     def shutdown(self):
         """Завершение работы хендлера."""
+
         self.persist_data()
 
     @manage_context
@@ -62,10 +63,11 @@ class SmokerBotHandler(ClientMixin, BaseHandler):
         await self._client_call(
             functions.bots.SetBotCommandsRequest(
                 scope=types.BotCommandScopeUsers(),
-                lang_code=const.BOT_COMMANDS_LANG_CODE,
+                lang_code='ccccc',   # const.BOT_COMMANDS_LANG_CODE,
                 commands=const.BOT_COMMANDS_DEFAULT
             ),
         )
+
 
     @manage_context
     def persist_data(self):
