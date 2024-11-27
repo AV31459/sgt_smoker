@@ -1,87 +1,73 @@
-from dataclasses import dataclass
+import datetime as dt
+import math
 
 from telethon import types
 from telethon.tl.custom.message import Message
-from telethon.events.common import EventCommon
+
+from . import const
 
 
-@dataclass
-class Context:
-    """Класс контекста обработки события.
+def get_command_from_string(string: str) -> dict:
+    """If string matches some *command* regex returns `re.Match.groupdict()`.
 
-    Аттрибуты устанавливаются на основе полученного события (Event), по
-    возмможности 'безопасным' способом, т.е. без потенциальных дополнительных
-    обращений к API.
-
-    Также содержит атрибуты внутреннего контекста `log_prefix` и
-    `propagate_exc` для логгирования и обработки исключений  сооответвующим
-    декоратором.
+    Note: Returned dict keys correspond to regex group names as defined in
+    original regex expressions.
+    For groups with certian names, defined in const.BOT_COMMAND_INT_RE_GROUPS,
+    string values are converted to python `int` for convenience.
     """
 
-    # from telethon.tl.custom.chatgetter.ChatGetter
-    chat_id: int = None    # in practice should always be set
-    chat: types.User | types.Chat | types.Channel | None = None
+    for canonical_name, pattern in const.BOT_COMMAND_NAME_RE_DICT.items():
+        if (
+            (match := pattern.match(string))
+            and (command := match.groupdict())
+        ):
+            command['name'] = canonical_name
 
-    # from telethon.tl.custom.sendergetter.SenderGetter (NewMessage)
-    sender_id: int = None   # in practice should always be set
-    sender: types.User | types.Channel | None = None
+            for group_name in const.BOT_COMMAND_INT_RE_GROUPS:
+                if command.get(group_name):
+                    command[group_name] = int(command[group_name])
 
-    # telethon.tl.custom.message.Message
-    msg: Message | None = None
-    msg_id: int | None = None
+            return command
 
-    # Original query
-    query: types.UpdateBotCallbackQuery | None = None
-    query_id: int | None = None
-    query_msg_id: int | None = None
-    query_data: bytes | None = None
 
-    # internal handler context
-    _log_prefix: str | None = None
-    propagate_exc: bool = False
+def get_callback_command_from_string(string: str) -> dict:
+    """If str matches  *callback command* regex returns `re.Match.groupdict()`.
 
-    # original event if any
-    event: EventCommon | None = None
+    Note: Returned dict keys correspond to regex group names as defined in
+    original regex expressions.
+    For groups with certian names, defined in const.BOT_COMMAND_INT_RE_GROUPS,
+    string values are converted to python `int` for convenience.
+    """
 
-    @staticmethod
-    def build_from_event(event: EventCommon):
-        """Create `Context` instance based on given `Event`."""
+    for pattern in const.BOT_CALLBACK_COMMANDS_RE:
+        if (
+            (match := pattern.match(string))
+            and (command := match.groupdict())
+        ):
+            for group_name in const.BOT_COMMAND_INT_RE_GROUPS:
+                if command.get(group_name):
+                    command[group_name] = int(command[group_name])
 
-        return Context(
-            chat_id=event.chat_id,
-            chat=event.chat,
+            return command
 
-            sender_id=event.sender_id,
-            sender=event.sender,
 
-            msg=(event.message if hasattr(event, 'message') else None),
-            msg_id=(event.message.id if hasattr(event, 'message')
-                    else event.message_id if hasattr(event, 'message_id')
-                    else None),
+def get_emoji_reaction_from_msg(msg: Message, user_id: int) -> str | None:
+    """Get `ReactionEmoji.emoticon` string set by given `user_id` if any."""
 
-            query=(event.query if hasattr(event, 'query') else None),
-            query_id=(
-                event.id if (hasattr(event, 'query') and hasattr(event, 'id'))
-                else None
-            ),
-            query_data=(event.sender if hasattr(event, 'data') else None),
-            event=event
-        )
+    if not (msg.reactions and msg.reactions.recent_reactions):
+        return
 
-    def get_chat_at_id_string(self) -> str:
-        """Get `[ chat_id @ msg_id ]:` string based on data available."""
+    for peer_reaction in msg.reactions.recent_reactions:
+        if not (
+            isinstance(peer_reaction.peer_id, types.PeerUser)
+            and peer_reaction.peer_id.user_id == user_id
+        ):
+            continue
 
-        return f'[ {self.chat_id} @ {self.msg_id} ]:'
+        if isinstance(peer_reaction.reaction, types.ReactionEmoji):
+            return peer_reaction.reaction.emoticon
 
-    @property
-    def log_prefix(self):
-        """If not yet set explicitly return default `[ chat_id @ msg_id ]`"""
-        return (self._log_prefix if self._log_prefix
-                else self.get_chat_at_id_string())
-
-    @log_prefix.setter
-    def log_prefix(self, value):
-        self._log_prefix = value
+        return 'not_an_instance_of_ReactionEmoji'
 
 
 def trunc(message: str | None, n: int = 40):
@@ -109,3 +95,36 @@ def get_message_info_string(msg: Message) -> str:
         f'fwd_from.from_id={msg.fwd_from.from_id if msg.fwd_from else None}, '
         f'action={msg.action}, message="{trunc(msg.message)}"'
     )
+
+
+def get_time_string(posix_time: float, tz_offset: int) -> str:
+    """Get time string given POSIX time and time zone offset."""
+
+    return (
+        dt.datetime.fromtimestamp(
+            posix_time,
+            dt.timezone(dt.timedelta(hours=tz_offset))
+        ).strftime('%H:%M')
+    )
+
+
+def get_timedelta_string(seconds: float) -> str:
+    """Get hh:mm{.ss} string from timedelta in seconds."""
+
+    seconds = math.ceil(seconds)
+
+    return (
+        (f'{seconds // const.SECONDS_IN_HOUR:02d}: '
+         f'{(seconds % const.SECONDS_IN_HOUR) // const.SECONDS_IN_MINUTE:02d}')
+        if (seconds > const.SECONDS_IN_MINUTE - 1)
+        else f'00:00.{seconds:02d}'
+    )
+
+
+def get_wakeup_task_name(user_id: int) -> str:
+    """Получить имя задачи wakeup для пользователя c данным user_id.
+
+    Строковое имя: `wakeup @ <user_id>`
+    """
+
+    return f'wakeup @ {user_id}'

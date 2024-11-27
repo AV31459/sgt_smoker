@@ -2,6 +2,7 @@
 import logging
 import os
 from logging.config import dictConfig
+from pathlib import Path
 
 import settings
 from dotenv import load_dotenv
@@ -22,7 +23,7 @@ def bot_runner():
 
     # Коннектим Телеграм клиент
     client = TelegramClient(
-        'data/smokerbot.session',
+        Path(os.getenv('DATA_PATH')) / 'smokerbot.session',
         os.getenv('CLIENT_API_ID'),
         os.getenv('CLIENT_API_HASH'),
         app_version=os.getenv('CLIENT_APP_VERSION'),
@@ -38,17 +39,19 @@ def bot_runner():
     handler = SmokerBotHandler(
         client,
         logger,
+        data_path=Path(os.getenv('DATA_PATH')),
+        admin_ids=[int(os.getenv('ADMIN_USER_ID'))],
         persistence_interval=int(os.getenv('PERSISTENCE_INTERVAL', 600))
     )
 
     # Регистрируем обработчики событий
     client.add_event_handler(
         handler.on_new_message,
-        events.NewMessage(incoming=True, func=handler.filter_message_event)
+        events.NewMessage(incoming=True, func=handler.filter_event)
     )
     client.add_event_handler(
-        handler.on_message_edited,
-        events.MessageEdited(func=handler.filter_message_event)
+        handler.on_callback_query,
+        events.CallbackQuery(func=handler.filter_event)
     )
 
     # Запускаем asyncio loop

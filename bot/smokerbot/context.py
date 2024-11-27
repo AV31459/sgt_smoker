@@ -10,7 +10,8 @@ from telethon.events.common import EventCommon
 # https://docs.python.org/3/library/contextvars.html#context-variables
 
 # Handler method call scope
-scope: ContextVar[str] = ContextVar('scope', default='')
+task_name: ContextVar[str] = ContextVar('task_name', default='')
+call_chain: ContextVar[str] = ContextVar('call_chain', default='')
 method_name: ContextVar[str] = ContextVar('method_name', default='')
 method_args: ContextVar[list] = ContextVar('method_args', default=[])
 method_kwargs: ContextVar[dict] = ContextVar('method_kwargs', default={})
@@ -62,18 +63,14 @@ def print_vars(prefix='', names=()):
     )
 
 
-def clear_and_set_contextvars(
-        scope_val: str,
+def init_contextvars(
+        task_name_val: str,
         event_val: EventCommon | None = None,
-        propagate_exc_val: bool | None = None
+        propagate_exc_val: bool | None = None,
+        sender_id_val: int | None = None,
+        sender_val: types.User | None = None
 ):
-    """Clear all contextvars and set new ones based on given args."""
-
-    # Сбрасываем все значения контекстных переменннх
-    for var_name in (
-        var.name for var in copy_context().keys() if var.name in globals()
-    ):
-        globals()[var_name].set(None)
+    """Set contextvars based on given args."""
 
     # Устанавливаем контекст обработки события telethon, при наличии
     if isinstance(event_val, EventCommon):
@@ -92,32 +89,36 @@ def clear_and_set_contextvars(
             msg_id.set(event_val.message.id)
 
         # Для событий типа CallbackQuery
-        if isinstance(event_val, events.CallbackQuery):
+        if isinstance(event_val, events.CallbackQuery.Event):
             query_id.set(event_val.id)
             msg_id.set(event_val.message_id)
             query_data.set(event_val.data)
 
-    # Устанавливаем значения scope, method_{...}, event, propagate_exc
-    if chat_id.get():
-        scope.set(f'{scope_val} {build_chat_at_id_string()}:')
-    else:
-        scope.set(f'[{scope_val}] :')
+    # Устанавливаем значения task_name, event, propagate_exc
+    task_name.set(task_name_val)
     event.set(event_val)
     propagate_exc.set(propagate_exc_val)
 
+    # Если значения для 'sender_id', 'sender' были переданы в явном виде -
+    # то устанавливаем их из аргументов
+    if sender_id_val:
+        sender_id.set(sender_id_val)
+    if sender_val:
+        sender.set(sender_val)
 
-def set_method_and_modify_scope(
+
+def enter_method(
     method: FunctionType,
     args: list,
     kwargs: dict
 ) -> tuple[Token]:
-    """Set new `method_{...}` contextvars, modify `scope` and return tokens."""
+    """Set `method_{...}` contextvars, modify `call_chain`, return tokens."""
 
     return (
-        scope.set(
-            f'{scope.get()} {current_method_name}():'
+        call_chain.set(
+            f'{call_chain.get()} {current_method_name}():'
             if (current_method_name := method_name.get())
-            else f'{scope.get()}'
+            else f'{call_chain.get()}'
         ),
         method_name.set(method.__name__),
         method_args.set(args),
@@ -125,42 +126,46 @@ def set_method_and_modify_scope(
     )
 
 
-def reset_method_and_modified_scope(
-    scope_token: Token,
+def exit_method(
+    call_chain_token: Token,
     method_name_token: Token,
     method_args_token: Token,
     method_kwargs_token: Token
 ):
-    """Resets values set by `set_method_and_modify_scope`."""
+    """Resets values set by `enter_method()`."""
 
-    scope.reset(scope_token)
+    call_chain.reset(call_chain_token)
     method_name.reset(method_name_token)
     method_args.reset(method_args_token)
     method_kwargs.reset(method_kwargs_token)
 
 
-def build_chat_at_id_string() -> str:
-    """Get context-based `[ chat_id @ msg_id ]` string if any."""
-
-    return (f'[ {chat_id.get()} @ {msg_id.get()} ]' if chat_id.get() else '')
-
-
-def build_log_prefix(call_info: bool = True) -> str:
+def get_log_prefix() -> str:
     """Builds full log prefix string based on current context.
 
     Built prefix looks like:
-    `scope : method() call with args=[...], kwargs={...}:`,
+    `task_name : call_chain : method() call with args=[...], kwargs={...}:`,
     where values are obtained from current context.
     """
 
     return (
-        f'{scope.get()}'
+        f'{get_task_prefix()}'
+        + (f' {call_chain.get()}' if call_chain.get() else '')
         + (f' {method_name.get()}() call with args={method_args.get()}, '
-           f'kwargs={method_kwargs.get()}:' if call_info else '')
+           f'kwargs={method_kwargs.get()}:')
     )
 
 
-def build_scope_prefix() -> str:
-    """Shortcut for `build_log_prefix(call_info=False)."""
+def get_task_prefix() -> str:
+    """Builds task name prefix string based on current context.
 
-    return build_log_prefix(call_info=False)
+    Built prefix looks like: `task name [ <chat_id> @ <msg_id> ]:`
+    """
+
+    return (
+        (
+            chat_id.get()
+            and f'{task_name.get()} [ {chat_id.get()} @ {msg_id.get()} ]:'
+        )
+        or f'[ {task_name.get()} ]:'
+    )
