@@ -275,3 +275,5 @@ MSG_SETTZ = (
     MSG_SETTING_NUM_PREFIX
     + '⚙️ Часовой пояс: **UTC{tz_offset:+}**\n\n⬇'
 )
+
+MSG_ADMIN_ON_INIT = '🔵 The bot service is being started'
