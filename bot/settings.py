@@ -4,8 +4,7 @@ LOG_CONFIG = {
     'version': 1,
     'formatters': {
         'basic': {
-            'format': '%(asctime)s - [%(levelname)s] - %(name)s.'
-            '%(funcName)s:%(lineno)d - %(message)s',
+            'format': '%(levelname)s:\t%(name)s:  %(asctime)s : %(message)s',
         },
     },
     'handlers': {
@@ -15,7 +14,7 @@ LOG_CONFIG = {
         },
         'file_handler': {
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': 'smoker.log',
+            'filename': 'logs/smoker.log',
             'maxBytes': 5_000_000,
             'backupCount': 5,
             'encoding': 'utf-8',
@@ -23,12 +22,9 @@ LOG_CONFIG = {
         },
     },
     'loggers': {
-        'httpx': {
-            'level': logging.WARNING
+        'telethon': {
+            'level': logging.WARN
         },
-        'apscheduler': {
-            'level': logging.WARNING
-        }
     },
     'root': {
         'level': logging.INFO,
@@ -36,7 +32,3 @@ LOG_CONFIG = {
     },
     'disable_existing_loggers': False,
 }
-
-USERDATA_FILEPATH = 'userdata'
-
-BOT_LOG_LEVEL = logging.DEBUG
