@@ -84,7 +84,7 @@ class SmokerBotHandler(UserdataMixin, ClientMixin, BaseHandler):
         """Проверка данных, пересоздание таймеров, если возможно."""
 
         # Temporary disabling excaption propageation
-        token = context.propagate_exc.set(False)
+        propagate_exc_token = context.propagate_exc.set(False)
 
         # NB: Iterating over copy() to be able to delete some keys
         for user_id in self._users.copy():
@@ -106,6 +106,10 @@ class SmokerBotHandler(UserdataMixin, ClientMixin, BaseHandler):
                 )
                 userdata.is_running = False
                 continue
+
+            # Temporary, needed for UserIsBlocked exception handling
+            sender_id_token = context.sender_id.set(user.id)
+            sender_token = context.sender.set(user)
 
             # Informing admin that bot is being restarted
             if user_id in self._admin_ids:
@@ -133,7 +137,10 @@ class SmokerBotHandler(UserdataMixin, ClientMixin, BaseHandler):
             )
             await self._send_message(user, const.MSG_ERROR_CHECK_SETTINGS)
 
-        context.propagate_exc.reset(token)
+            context.sender_id.reset(sender_id_token)
+            context.sender.reset(sender_token)
+
+        context.propagate_exc.reset(propagate_exc_token)
 
         self.logger.info(
             f'{context.get_task_prefix()} User data check completed'
