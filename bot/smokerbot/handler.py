@@ -541,7 +541,7 @@ class SmokerBotHandler(UserdataMixin, ClientMixin, BaseHandler):
 
         # Доступно только администратору бота
         if context.sender_id.get() not in self._admin_ids:
-            await self._set_reaction_not_understood()
+            return await self._set_reaction_not_understood()
 
         time_now = time()
 
