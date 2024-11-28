@@ -216,6 +216,8 @@ class SmokerBotHandler(UserdataMixin, ClientMixin, BaseHandler):
         # Проверка контекста
         await self._check_contextvars(extra_vars=('msg',))
 
+        self._get_or_create_userdata().last_seen = time()
+
         self.logger.info(
             f'{context.get_task_prefix()} message info: '
             f'{helpers.get_message_info_string(msg := context.msg.get())}'
@@ -460,6 +462,16 @@ class SmokerBotHandler(UserdataMixin, ClientMixin, BaseHandler):
                 const.MSG_STOP_SMOKED_CIGS.format(
                     sig_smoked=userdata.sig_smoked
                 )
+                + (
+                    const.MSG_STOP_AVG_INTEVAL.format(
+                        avg_intrerval=(helpers.get_timedelta_string(
+                            (time() - userdata.ran_at)
+                            / (userdata.sig_smoked - 1)
+                        ))
+                    )
+                    if (userdata.sig_smoked > 1)
+                    else ''
+                )
             )
 
         await self._send_status_msg()
@@ -495,8 +507,9 @@ class SmokerBotHandler(UserdataMixin, ClientMixin, BaseHandler):
         userdata.sig_available -= 1
         userdata.sig_smoked += 1
 
-        # Если режим ручной, запускаем таймер
-        if userdata.mode == 'manual':
+        # Если режим ручной, и кол-во доступных сигарет == 0
+        # то запускаем таймер
+        if userdata.mode == 'manual' and userdata.sig_available == 0:
             self._set_timer()
 
         await self._send_message(
@@ -514,12 +527,22 @@ class SmokerBotHandler(UserdataMixin, ClientMixin, BaseHandler):
         if context.sender_id.get() not in self._admin_ids:
             await self._set_reaction_not_understood()
 
+        time_now = time()
+
         await self._send_message(
             context.sender.get(),
             const.MSG_INFO.format(
                 n_users=len([
                     user_id for user_id, userdata in self._users.items()
-                    if userdata.is_active_user
+                    if (
+                        # пользователь не блокировал бота
+                        userdata.is_active_user
+                        # был активен менее чем неделю назад
+                        and (
+                            (time_now - userdata.last_seen)
+                            < const.SECONDS_IN_WEEK
+                        )
+                    )
                 ]),
                 mem_mb=(psutil.Process().memory_info().rss / (1024 ** 2))
             )
@@ -537,6 +560,8 @@ class SmokerBotHandler(UserdataMixin, ClientMixin, BaseHandler):
 
         # Проверка контекста
         await self._check_contextvars(extra_vars=('query_data',))
+
+        self._get_or_create_userdata().last_seen = time()
 
         # Подтверждаем получение
         await event.answer()

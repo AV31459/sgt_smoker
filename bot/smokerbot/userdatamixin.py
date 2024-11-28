@@ -11,6 +11,7 @@ from .exceptions import ContextValuetError
 class UserData:
     # User status
     is_active_user: bool        # False if blocked by user, True otherwise
+    last_seen: float            # last seen time
 
     # Service status
     is_running: bool
