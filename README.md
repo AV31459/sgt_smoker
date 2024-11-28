@@ -55,7 +55,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Переименуйте `.env.examle` в `.env` и ***укажите `token` вашего бота, `api_id`, `api_hash` и telegram_id для администратора***
+Переименуйте `.env.examle` в `.env` и укажите `bot_token` вашего бота, `api_id`, `api_hash` и telegram_id для администратора.
 ```
 mv .env.examle .env
 vi .env (или любым другим текстовым редактором по вкусу)
