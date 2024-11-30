@@ -164,6 +164,13 @@ def get_task_prefix() -> str:
 
     return (
         (
+            chat.get()
+            and (
+                f'{task_name.get()} '
+                f'[ {chat.get().username} @ {msg_id.get()} ]:'
+            )
+        )
+        or (
             chat_id.get()
             and f'{task_name.get()} [ {chat_id.get()} @ {msg_id.get()} ]:'
         )
