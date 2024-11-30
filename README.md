@@ -40,7 +40,7 @@
 
 Так как [telethon](https://github.com/LonamiWebs/Telethon) работает непосредственно с [MTProto](https://core.telegram.org/mtproto), для развертывания бота в дополнение к стандартному бот-токену от [@BotFather](https://t.me/BotFather) также понадобятся `api_id` and `api_hash` от [Telegram API](https://core.telegram.org/api/obtaining_api_id#obtaining-api-id).    
 
-⚠ Security warning ⚠: ___В случае дискредитации (утечки) значений `api_id` and `api_hash`, третьи лица могут получить полный доступ к вашему телеграм-аккаунту!___.   
+⚠ Security warning ⚠: ___`api_id` and `api_hash` могут быть использованы для получения полного доступа к вашему телеграм-аккаунту!___.   
 
 Клонируйте репозиторий, создайте и разверните виртуальное окружение:
 ```
