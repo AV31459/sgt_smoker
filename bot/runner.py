@@ -28,11 +28,11 @@ def bot_runner():
         Path(os.getenv('DATA_PATH')) / 'smokerbot.session',
         os.getenv('CLIENT_API_ID'),
         os.getenv('CLIENT_API_HASH'),
-        device_model=os.getenv('CLIENT_DEVICE_MODEL'),
-        system_version=os.getenv('CLIENT_SYSTEM_VERSION'),
+        # device_model=os.getenv('CLIENT_DEVICE_MODEL'),
+        # system_version=os.getenv('CLIENT_SYSTEM_VERSION'),
         app_version=os.getenv('CLIENT_APP_VERSION'),
-        lang_code=os.getenv('CLIENT_LANG_CODE'),
-        system_lang_code=os.getenv('CLIENT_SYSTEM_LANG_CODE'),
+        # lang_code=os.getenv('CLIENT_LANG_CODE'),
+        # system_lang_code=os.getenv('CLIENT_SYSTEM_LANG_CODE'),
         connection_retries=int(os.getenv('CLIENT_CONNECTION_RETRIES'))
     )
     client.session.set_dc(
